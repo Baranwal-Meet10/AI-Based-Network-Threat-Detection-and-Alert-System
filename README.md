@@ -177,30 +177,6 @@ Download the NSL-KDD dataset and place the required files in the dataset locatio
 
 Open the project's notebook in **Jupyter Notebook** or **Google Colab** and execute the cells in order. Use the actual notebook or script included in this repository; the exact execution filename should be documented here once the project files are finalised.
 
-## 📁 Suggested Repository Structure
-
-The report does not specify the final source-code folder layout. The following is a suggested structure; adjust it to match the files actually uploaded.
-
-```text
-AI_Based_Network_Threat_Detection_and_Alert_System/
-│
-├── dataset/
-│   └── README.md
-│
-├── notebooks/
-│   └── network_threat_detection.ipynb
-│
-├── outputs/
-│   ├── detection_results.csv
-│   └── alerts_log.csv
-│
-├── screenshots/
-│
-├── requirements.txt
-├── README.md
-└── .gitignore
-```
-
 ## 👥 Project Team
 
 Developed as a Computer Networks (CN) mini project at **Unitedworld Institute of Technology, Karnavati University**.
