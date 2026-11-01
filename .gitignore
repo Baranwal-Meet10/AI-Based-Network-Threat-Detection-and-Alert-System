@@ -1,0 +1,6 @@
+*.joblib
+*.keras
+detection_results.csv
+alerts_log.csv
+.ipynb_checkpoints/
+__pycache__/

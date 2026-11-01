@@ -1,0 +1,704 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Network Threat Monitor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<script>
+/* Early theme resolution: merges @media(prefers-color-scheme) + [data-theme] into one CSS rule */
+(function(){
+  var d=document.documentElement,m=matchMedia('(prefers-color-scheme:dark)');
+  function u(){var t=d.getAttribute('data-theme');d.classList.toggle('theme-dark',t==='dark'||(!t&&m.matches))}
+  u();m.addEventListener('change',u);
+})();
+</script>
+<style>
+/* Layout concept: security-operations console. Sticky header with tabs; Monitor tab = KPI strip, live alert feed beside class counts + threat timeline. */
+:root{
+  --bg:#eef2f6; --panel:#ffffff; --panel2:#f4f7fa; --line:#d9e1ea; --fg:#14202e; --muted:#5b6c80;
+  --accent:#1c6fe0; --accent-ink:#ffffff;
+  --c-normal:#1f9f82; --c-dos:#d94a2d; --c-probe:#c98a0a; --c-r2l:#2f7ae0; --c-u2r:#9b45e0;
+  --good:#1f9f82; --warn:#c98a0a; --bad:#d94a2d;
+  --f-display:'Bricolage Grotesque','Segoe UI',system-ui,sans-serif;
+  --f-body:'IBM Plex Sans','Segoe UI',system-ui,sans-serif;
+  --f-mono:'IBM Plex Mono',ui-monospace,Menlo,Consolas,monospace;
+}
+/* Single dark-theme definition — applied via early JS that resolves system pref + data-theme into .theme-dark */
+:root.theme-dark{
+  --bg:#0a111b; --panel:#101a28; --panel2:#152233; --line:#22334a; --fg:#e5ecf5; --muted:#8da0b7;
+  --accent:#5aa2ff; --accent-ink:#06101e;
+  --c-normal:#3fc8a8; --c-dos:#f2674a; --c-probe:#f0b23a; --c-r2l:#6aa5ff; --c-u2r:#c46bff;
+  --good:#3fc8a8; --warn:#f0b23a; --bad:#f2674a; color-scheme:dark}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--fg);font:14px/1.5 var(--f-body);padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:0 40px}
+.wrap{max-width:1180px;margin:0 auto}
+header{padding:22px 0 14px;display:flex;flex-wrap:wrap;gap:12px 24px;align-items:flex-end;justify-content:space-between}
+.brand{min-width:0}
+.eyebrow{font:500 11px var(--f-mono);letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+h1{font:700 clamp(24px,4vw,36px)/1.1 var(--f-display);margin:6px 0 0;text-wrap:balance;letter-spacing:-.01em}
+.sub{color:var(--muted);margin:6px 0 0;max-width:62ch}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{font:500 12px var(--f-mono);padding:5px 10px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--muted)}
+.chip b{color:var(--fg);font-weight:500}
+nav{display:flex;gap:4px;border-bottom:1px solid var(--line);margin:8px 0 20px;overflow-x:auto}
+nav button{font:500 14px var(--f-body);background:none;border:0;border-bottom:2px solid transparent;color:var(--muted);padding:10px 14px;cursor:pointer;white-space:nowrap}
+nav button[aria-selected="true"]{color:var(--fg);border-bottom-color:var(--accent)}
+nav button:hover{color:var(--fg)}
+button:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+section[hidden]{display:none}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px;min-width:0;contain:content}
+.panel h2{font:600 13px var(--f-body);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:0 0 12px}
+.note{font-size:12.5px;color:var(--muted)}
+.grid{display:grid;gap:14px}
+.kpis{grid-template-columns:repeat(auto-fit,minmax(200px,1fr));margin-bottom:14px}
+.kpi{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 16px;min-width:0}
+.kpi .l{font:500 11px var(--f-mono);letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.kpi .v{font:700 34px/1.1 var(--f-display);margin-top:6px;font-variant-numeric:tabular-nums}
+.kpi .s{font-size:12px;color:var(--muted);margin-top:2px}
+.level{display:flex;align-items:center;gap:10px}
+.dot{width:10px;height:10px;border-radius:50%;background:var(--good);flex:none}
+.controls{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:14px}
+.btn{font:500 13px var(--f-body);padding:7px 14px;border-radius:7px;border:1px solid var(--line);background:var(--panel);color:var(--fg);cursor:pointer}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn:hover{filter:brightness(1.08)}
+select{font:500 13px var(--f-body);padding:7px 10px;border-radius:7px;border:1px solid var(--line);background:var(--panel);color:var(--fg)}
+.spacer{flex:1}
+.prog{height:4px;background:var(--line);border-radius:2px;overflow:hidden;flex:1 1 140px;min-width:100px}
+.prog i{display:block;height:100%;background:var(--accent);width:0}
+.main{grid-template-columns:minmax(0,1.5fr) minmax(0,1fr)}
+@media(max-width:860px){.main{grid-template-columns:1fr}}
+.feed{display:flex;flex-direction:column;gap:6px;min-height:420px}
+.alert{display:grid;grid-template-columns:auto 1fr auto;gap:2px 12px;align-items:center;padding:9px 12px;border:1px solid var(--line);border-left:4px solid var(--c);border-radius:8px;background:var(--panel2)}
+.alert.anim-in{animation:in .35s ease}
+@keyframes in{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
+@media(prefers-reduced-motion:reduce){
+  .alert.anim-in{animation:none}
+  .bar .tr i{transition:none}
+}
+.pill{font:600 11px var(--f-mono);letter-spacing:.06em;padding:3px 8px;border-radius:4px;background:var(--c);color:#fff;white-space:nowrap}
+.alert .t{font-weight:600}
+.alert .d{font:12px var(--f-mono);color:var(--muted);grid-column:2;overflow-wrap:anywhere}
+.alert .r{text-align:right;font:12px var(--f-mono);grid-row:1/3;grid-column:3;display:flex;flex-direction:column;align-items:flex-end;gap:3px}
+.ok{color:var(--good)} .fa{color:var(--warn)}
+.empty{color:var(--muted);padding:40px 0;text-align:center}
+.bars{display:flex;flex-direction:column;gap:10px}
+.bar{display:grid;grid-template-columns:76px 1fr 48px;gap:10px;align-items:center;font-size:13px}
+.bar .tr{height:12px;background:var(--panel2);border-radius:6px;overflow:hidden}
+.bar .tr i{display:block;height:100%;background:var(--c);border-radius:6px;width:100%;transform-origin:left;transition:transform .3s;will-change:transform}
+.bar .n{font:500 13px var(--f-mono);text-align:right;font-variant-numeric:tabular-nums}
+.sev{font:500 11px var(--f-mono);color:var(--muted)}
+svg text{fill:var(--muted);font:11px var(--f-mono)}
+.tl{width:100%;height:auto;display:block}
+.stack{display:flex;flex-direction:column;gap:14px;min-width:0}
+.metrics{grid-template-columns:repeat(auto-fit,minmax(150px,1fr));margin-bottom:14px}
+.two{grid-template-columns:repeat(auto-fit,minmax(320px,1fr))}
+.pc{display:grid;grid-template-columns:70px 1fr;gap:8px 12px;align-items:center;font-size:13px}
+.pc .trio{display:flex;flex-direction:column;gap:3px}
+.pc .m{display:grid;grid-template-columns:20px 1fr 44px;gap:6px;align-items:center;font:11px var(--f-mono);color:var(--muted)}
+.pc .m i{display:block;height:7px;border-radius:4px;background:var(--c)}
+.pc .m .bg{background:var(--panel2);border-radius:4px;overflow:hidden}
+.pc .m b{font-weight:500;color:var(--fg);text-align:right}
+.cmwrap{overflow-x:auto}
+table.cm{border-collapse:separate;border-spacing:3px;font:12px var(--f-mono);margin:0 auto}
+table.cm th{font-weight:500;color:var(--muted);padding:4px 6px}
+table.cm td{min-width:62px;height:46px;text-align:center;border-radius:5px;font-variant-numeric:tabular-nums;color:var(--fg)}
+.callout{border:1px solid var(--line);border-left:4px solid var(--warn);background:var(--panel2);border-radius:8px;padding:12px 14px;margin-top:14px}
+.callout b{font-weight:600}
+.flow{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-bottom:14px}
+.step{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px;position:relative;min-width:0}
+.step .k{font:500 11px var(--f-mono);letter-spacing:.1em;text-transform:uppercase;color:var(--accent)}
+.step .h{font:600 15px var(--f-display);margin:4px 0}
+.step .p{font-size:12.5px;color:var(--muted)}
+.step .big{font:700 20px var(--f-display);margin-top:6px;font-variant-numeric:tabular-nums}
+.legend{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12px;color:var(--muted);margin-top:10px}
+.legend i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px;background:var(--c)}
+.c-Normal{--c:var(--c-normal)} .c-DoS{--c:var(--c-dos)} .c-Probe{--c:var(--c-probe)} .c-R2L{--c:var(--c-r2l)} .c-U2R{--c:var(--c-u2r)}
+footer{margin-top:28px;color:var(--muted);font-size:12px}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <div class="brand">
+    <div class="eyebrow">Computer Networks · Mini project</div>
+    <h1>AI-Based Network Threat Detection and Alert System</h1>
+    <p class="sub">A Random Forest classifier trained on NSL-KDD names the attack behind each network connection: DoS, Probe, R2L or U2R.</p>
+  </div>
+  <div class="chips">
+    <span class="chip">Dataset <b>NSL-KDD</b></span>
+    <span class="chip">Model <b>Random Forest</b></span>
+    <span class="chip">Classes <b>Normal + 4 attacks</b></span>
+  </div>
+</header>
+
+<nav role="tablist" aria-label="Dashboard sections">
+  <button role="tab" id="tab-monitor" aria-selected="true" aria-controls="monitor" tabindex="0">Live monitor</button>
+  <button role="tab" id="tab-performance" aria-selected="false" aria-controls="performance" tabindex="-1">Model performance</button>
+  <button role="tab" id="tab-pipeline" aria-selected="false" aria-controls="pipeline" tabindex="-1">Data and pipeline</button>
+</nav>
+
+<section id="monitor" role="tabpanel" aria-labelledby="tab-monitor">
+  <div class="controls">
+    <button class="btn primary" id="play">Pause</button>
+    <button class="btn" id="restart">Restart</button>
+    <label class="note" for="speed">Speed</label>
+    <select id="speed"><option value="1">1×</option><option value="2" selected>2×</option><option value="4">4×</option></select>
+    <div class="prog" aria-hidden="true"><i id="progbar"></i></div>
+    <span class="note" id="clock">T+00:00</span>
+  </div>
+  <div class="grid kpis">
+    <div class="kpi"><div class="l">Connections analysed</div><div class="v" id="k-n">0</div><div class="s" id="k-n-s">of 0 in replay</div></div>
+    <div class="kpi"><div class="l">Alerts raised</div><div class="v" id="k-a">0</div><div class="s" id="k-a-s">0% of traffic</div></div>
+    <div class="kpi"><div class="l">Alerts confirmed</div><div class="v" id="k-c" style="color:var(--good)">0</div><div class="s" id="k-c-s">attack type matches ground truth</div></div>
+    <div class="kpi"><div class="l">Missed attacks</div><div class="v" id="k-m" style="color:var(--warn)">0</div><div class="s">classified as Normal</div></div>
+    <div class="kpi"><div class="l">Threat level (last 20)</div><div class="v level"><span class="dot" id="lvl-dot"></span><span id="lvl">LOW</span></div><div class="s" id="lvl-s">no active threat</div></div>
+  </div>
+  <div class="grid main">
+    <div class="panel"><h2>Alert feed</h2><div class="feed" id="feed" aria-live="polite" aria-atomic="false"></div></div>
+    <div class="stack">
+      <div class="panel"><h2>Detected by attack type</h2><div class="bars" id="bars" role="list" aria-label="Detection counts by attack type"></div></div>
+      <div class="panel"><h2>Attack share, rolling 20 connections</h2>
+        <svg class="tl" id="tl" viewBox="0 0 400 130" role="img" aria-label="Rolling share of connections classified as attacks"><title>Line chart showing the rolling percentage of attack connections over time</title></svg></div>
+    </div>
+  </div>
+  <p class="note" style="margin-top:14px">This is a replay of 322 real connections sampled from the NSL-KDD test set, each classified by the trained Random Forest. Events are ordered into calm, DoS, probe and intrusion phases to show how alerts behave. Ground-truth labels are only used to mark each alert confirmed or wrong.</p>
+</section>
+
+<section id="performance" role="tabpanel" aria-labelledby="tab-performance" hidden>
+  <div class="grid metrics" id="metrics"></div>
+  <div class="grid two">
+    <div class="panel"><h2>Per-class results</h2><div class="pc" id="pc"></div>
+      <div class="legend"><span><b style="font-family:var(--f-mono)">P</b> precision</span><span><b style="font-family:var(--f-mono)">R</b> recall</span><span><b style="font-family:var(--f-mono)">F1</b> F-score</span></div></div>
+    <div class="panel"><h2>Confusion matrix, 22,541 test connections</h2><div class="cmwrap" id="cm"></div>
+      <p class="note" style="text-align:center;margin:8px 0 0">Rows: actual class. Columns: predicted class. Colour shows the share of each actual class.</p></div>
+  </div>
+  <div class="callout" id="callout"></div>
+</section>
+
+<section id="pipeline" role="tabpanel" aria-labelledby="tab-pipeline" hidden>
+  <div class="flow" id="flow"></div>
+  <div class="grid two">
+    <div class="panel"><h2>Training classes before and after SMOTE</h2><div class="bars" id="smote"></div>
+      <p class="note" style="margin:12px 0 0">Rare classes R2L and U2R are oversampled with synthetic examples. The test set is never resampled.</p></div>
+    <div class="panel"><h2>Attack traffic in the test set</h2>
+      <div class="bars" id="proto"></div>
+      <h2 style="margin-top:18px">Most targeted services</h2><div class="bars" id="svc"></div></div>
+  </div>
+  <div class="panel" style="margin-top:14px"><h2>The four attack types</h2><div class="grid two" id="atkdesc"></div></div>
+</section>
+
+<footer>Results come from the notebook's Random Forest on the official KDDTest+ file. To test your own traffic file, run the Colab notebook and upload it in the detection step.</footer>
+</div>
+
+<script>
+/* ===== Data ===== */
+/* Compact stream: [id, protoIdx, service, flagIdx, src, dst, actualIdx, predIdx, conf]
+   Proto: 0=tcp 1=icmp 2=udp · Flags: 0=SF 1=RSTR 2=RSTO 3=REJ 4=S0 5=S3 6=SH
+   Classes: 0=Normal 1=DoS 2=Probe 3=R2L 4=U2R (ORDER) */
+const _P=['tcp','icmp','udp'],_F=['SF','RSTR','RSTO','REJ','S0','S3','SH'];
+const ORDER=['Normal','DoS','Probe','R2L','U2R'];
+const _R=[[1,0,"http",0,78162,174,0,0,1],[2,1,"eco_i",0,8,0,2,2,1],[3,0,"http",0,305,2710,0,0,1],[4,0,"http",0,317,1215,0,0,1],[5,0,"http",0,213,4602,0,0,1],[6,2,"domain_u",0,44,44,0,0,1],[7,0,"http",1,59424,0,1,1,0.69],[8,1,"ecr_i",0,508,0,1,1,1],[9,0,"http",0,328,1302,0,0,1],[10,0,"http",0,289,9522,0,0,1],[11,0,"pop_3",0,32,93,3,0,0.78],[12,0,"daytime",2,0,0,1,1,1],[13,0,"telnet",0,0,44,1,0,0.72],[14,0,"pop_3",0,32,93,3,0,0.88],[15,0,"private",4,0,0,1,1,1],[16,0,"ftp_data",0,42562,0,0,0,1],[17,1,"eco_i",0,20,0,2,2,0.94],[18,0,"ftp_data",0,283618,0,3,3,0.76],[19,0,"http",0,306,1075,0,0,0.92],[20,2,"private",0,53,50,0,0,0.43],[21,0,"http",0,308,4613,0,0,1],[22,0,"private",3,0,0,1,1,1],[23,0,"private",4,0,0,1,1,1],[24,1,"ecr_i",0,1032,0,1,1,1],[25,0,"pop_3",2,0,36,2,0,0.46],[26,0,"private",3,0,0,1,1,1],[27,0,"pop_3",2,0,36,2,0,0.417],[28,0,"http",0,251,379,0,0,1],[29,0,"http",0,219,1424,0,0,1],[30,0,"http",1,59424,1,1,1,0.88],[31,0,"telnet",0,127,174,3,0,0.69],[32,0,"telnet",0,170,47614,0,0,0.6],[33,0,"private",4,0,0,1,1,1],[34,0,"ftp",0,26,157,3,0,0.8],[35,0,"http",0,260,54989,0,0,1],[36,0,"pop_3",4,0,0,2,1,0.955],[37,0,"http",0,305,1015,0,0,1],[38,0,"telnet",0,0,48,2,0,0.48],[39,0,"private",4,0,0,1,1,1],[40,0,"http",0,299,63112,0,0,1],[41,0,"pop_3",0,28,93,3,0,0.79],[42,0,"http",0,295,4543,0,0,1],[43,0,"private",3,0,0,1,1,1],[44,2,"private",0,1,0,0,2,1],[45,0,"http",0,309,4004,0,0,1],[46,2,"private",0,1,1,2,2,0.95],[47,1,"ecr_i",0,520,0,1,1,1],[48,0,"http",0,240,1036,0,0,1],[49,2,"private",0,1,0,0,2,0.92],[50,0,"private",3,0,0,2,2,0.99],[51,0,"http",0,339,1315,0,0,1],[52,2,"domain_u",0,44,113,0,0,1],[53,1,"ecr_i",0,40008,0,0,0,0.99],[54,0,"http",0,309,4368,0,0,1],[55,0,"http",0,292,4223,0,0,1],[56,2,"private",0,53,52,0,0,0.43],[57,0,"http",0,275,383,0,0,1],[58,0,"ftp_data",0,2209,0,4,0,0.99],[59,1,"ecr_i",0,1032,0,1,1,1],[60,0,"pop_3",0,32,93,3,0,0.68],[61,0,"ftp_data",0,12,0,3,0,0.82],[62,0,"pop_3",0,30,93,3,0,0.71],[63,0,"pop_3",0,28,93,3,0,0.76],[64,0,"http",4,0,0,1,0,0.73],[65,0,"private",3,0,0,1,1,1],[66,2,"private",0,54,54,0,0,0.44],[67,0,"private",3,0,0,1,1,1],[68,0,"telnet",5,0,44,1,0,0.46],[69,0,"http",0,218,3907,0,0,1],[70,0,"private",3,0,0,1,1,0.77],[71,0,"telnet",0,156,1561,4,0,0.58],[72,0,"pop_3",0,32,93,3,0,0.79],[73,0,"smtp",0,1072,338,0,0,1],[74,0,"http",0,199,58294,0,0,1],[75,0,"http",0,218,180,0,0,1],[76,0,"http",0,186,308,0,0,1],[77,0,"ftp",0,168,596,3,4,0.99],[78,0,"http",0,234,1819,0,0,1],[79,0,"http",0,201,5792,0,0,1],[80,0,"http",0,202,7223,0,0,1],[81,0,"imap4",2,0,44,2,0,0.44],[82,2,"private",0,28,0,0,1,0.66],[83,0,"http",0,306,1642,0,0,1],[84,0,"http",0,303,1648,0,0,1],[85,0,"http",0,199,3557,0,0,1],[86,0,"ftp_data",0,12,0,3,0,0.99],[87,0,"http",0,287,857,0,0,1],[88,0,"telnet",3,0,0,2,0,0.563],[89,0,"http",0,297,305,0,0,1],[90,2,"private",0,52,52,0,0,0.43],[91,0,"http",0,321,2119,0,0,1],[92,0,"http",0,309,2353,0,0,1],[93,2,"domain_u",0,36,0,0,0,1],[94,0,"http",0,287,181,0,0,1],[95,0,"telnet",0,197,1644,4,0,0.87],[96,0,"private",3,0,0,1,1,1],[97,2,"other",0,1,1,2,0,0.7],[98,0,"sql_net",4,0,0,1,1,1],[99,0,"telnet",0,3760,29364,4,0,0.81],[100,2,"private",0,1,0,0,2,0.9],[101,0,"ftp_data",0,12,0,3,0,0.61],[102,0,"http",0,177,1960,0,0,1],[103,0,"http",0,233,788,0,0,1],[104,0,"private",3,0,0,1,1,1],[105,0,"http",0,206,11455,0,0,1],[106,0,"telnet",0,124,188,3,0,0.7],[107,0,"http",0,276,1973,0,0,1],[108,0,"http",0,309,397,0,0,1],[109,0,"exec",2,0,0,1,1,0.48],[110,0,"http",1,70144,0,1,1,0.51],[111,0,"imap4",2,0,44,2,0,0.46],[112,1,"eco_i",0,8,0,2,2,1],[113,0,"http",4,0,0,1,0,0.47],[114,0,"ftp_data",0,283618,0,4,0,1],[115,0,"http",0,402,10294,0,0,1],[116,0,"other",3,0,0,2,2,1],[117,0,"imap4",2,0,44,2,2,0.51],[118,0,"smtp",0,1148,333,0,0,1],[119,0,"private",3,0,0,1,1,1],[120,0,"http",0,54540,8314,1,0,0.98],[121,1,"eco_i",0,8,0,2,2,1],[122,0,"private",3,0,0,2,2,1],[123,0,"http",1,74464,1,1,1,0.56],[124,0,"http",0,234,3052,0,0,1],[125,0,"smtp",0,2599,293,1,0,0.91],[126,0,"http",0,229,1075,0,0,1],[127,0,"http",0,305,2196,0,0,1],[128,0,"ftp",0,160,595,3,0,0.82],[129,0,"other",3,0,0,2,2,1],[130,0,"smtp",0,1517,332,0,0,1],[131,0,"ftp",0,96,533,4,4,0.79],[132,0,"http",0,362,2529,0,0,1],[133,0,"http",0,216,296,0,0,1],[134,0,"http",0,240,263,0,0,1],[135,0,"http",0,233,2103,0,0,1],[136,0,"http",0,295,1241,0,0,1],[137,0,"ftp_data",0,283618,0,3,0,0.99],[138,0,"telnet",3,0,0,2,2,0.53],[139,0,"netbios_dgm",3,0,0,1,1,1],[140,0,"http",0,335,241,0,0,1],[141,0,"pop_3",0,32,93,3,0,0.86],[142,0,"private",3,0,0,1,1,1],[143,0,"http",0,209,2893,0,0,1],[144,0,"smtp",0,921,328,0,0,1],[145,0,"ftp_data",0,192,0,0,0,1],[146,0,"private",3,0,0,1,1,1],[147,0,"link",3,0,0,2,2,0.98],[148,0,"private",3,0,0,1,1,1],[149,0,"pop_3",4,0,0,2,1,0.915],[150,2,"private",0,28,0,0,1,0.47],[151,0,"http",0,266,295,0,0,0.54],[152,0,"private",3,0,0,1,1,1],[153,0,"telnet",2,0,15,2,0,0.67],[154,0,"pop_3",0,28,93,3,0,0.78],[155,0,"http",0,320,1678,0,0,1],[156,0,"pop_3",0,26,93,3,0,0.93],[157,0,"private",4,0,0,1,1,1],[158,0,"imap4",2,0,44,2,0,0.52],[159,0,"imap4",3,0,0,2,0,0.48],[160,0,"http",0,193,16914,0,0,1],[161,2,"private",0,52,50,0,0,0.43],[162,1,"ecr_i",0,508,0,1,1,0.99],[163,2,"private",0,1,1,2,2,0.98],[164,1,"ecr_i",0,1008,0,1,1,1],[165,0,"http",0,233,14208,0,0,1],[166,0,"http",0,245,4224,0,0,1],[167,0,"private",1,0,0,2,2,1],[168,0,"telnet",0,1589,36386,4,0,0.93],[169,0,"http",0,223,1290,0,0,1],[170,0,"finger",0,7,277,0,0,0.97],[171,0,"private",3,0,0,1,1,1],[172,0,"private",3,0,0,1,1,1],[173,0,"auth",0,9,35,0,0,1],[174,0,"http",0,213,253,0,0,1],[175,0,"http",4,0,0,1,0,0.73],[176,0,"http",0,196,2796,0,0,1],[177,0,"http",0,341,1036,0,0,1],[178,0,"http",0,305,12725,0,0,1],[179,0,"telnet",0,0,44,1,0,0.72],[180,0,"http",0,297,327,0,0,1],[181,0,"http",0,54540,8314,1,0,0.59],[182,0,"http",0,315,590,0,0,1],[183,0,"pop_3",3,0,0,2,2,0.52],[184,0,"sql_net",3,0,0,1,1,1],[185,0,"other",1,0,0,0,2,0.66],[186,2,"private",0,53,50,0,0,0.43],[187,0,"http",0,319,3948,0,0,1],[188,0,"http",0,262,282,0,0,1],[189,0,"http",0,296,19717,0,0,1],[190,0,"private",3,0,0,1,1,1],[191,0,"finger",2,0,0,1,1,1],[192,2,"private",0,105,146,0,0,1],[193,0,"echo",2,0,0,1,1,1],[194,0,"ftp_data",0,0,5928,4,3,0.79],[195,0,"http",0,345,1108,0,0,1],[196,0,"private",4,0,0,1,1,1],[197,0,"private",3,0,0,1,1,0.94],[198,0,"smtp",0,885,329,0,0,1],[199,2,"private",0,53,55,0,0,0.41],[200,0,"private",6,0,0,2,2,0.93],[201,0,"imap4",4,0,0,2,1,0.92],[202,0,"private",3,0,0,1,1,1],[203,0,"telnet",3,0,0,2,0,0.56],[204,0,"ftp_data",0,607,0,0,0,0.92],[205,0,"telnet",5,0,44,1,0,0.57],[206,0,"http",0,230,494,0,0,1],[207,0,"other",3,0,0,2,2,1],[208,0,"exec",2,0,0,1,1,1],[209,0,"telnet",0,0,44,1,0,0.63],[210,0,"http",0,220,1212,0,0,1],[211,0,"http",0,243,4907,0,0,1],[212,0,"telnet",0,1773,32209,4,0,0.93],[213,0,"http",0,194,651,0,0,1],[214,0,"telnet",4,0,0,1,1,0.6],[215,0,"ftp",0,220,764,0,0,1],[216,0,"http",0,248,1190,0,0,1],[217,0,"http",3,0,0,1,1,1],[218,0,"netbios_ns",3,0,0,1,1,1],[219,0,"sunrpc",3,0,0,2,0,0.71],[220,0,"http",0,54540,8314,1,0,0.9],[221,0,"csnet_ns",3,0,0,1,1,1],[222,0,"private",4,0,0,1,1,1],[223,0,"nnsp",3,0,0,1,1,1],[224,0,"private",3,0,0,1,1,1],[225,0,"pop_2",3,0,0,2,2,0.98],[226,0,"smtp",0,2599,293,1,0,0.98],[227,0,"private",3,0,0,1,1,1],[228,0,"telnet",0,0,44,1,0,0.507],[229,0,"ftp",0,45,214,4,4,0.84],[230,0,"other",1,0,0,0,2,0.88],[231,0,"http",0,328,5449,0,0,1],[232,0,"pop_3",0,32,93,3,0,0.77],[233,0,"http",0,179,7257,0,0,1],[234,2,"private",0,54,51,0,0,0.48],[235,0,"http",0,194,7919,0,0,1],[236,0,"http",0,197,5989,0,0,1],[237,0,"private",3,0,0,1,1,1],[238,0,"http",0,228,5210,0,0,1],[239,0,"http",0,317,5720,0,0,1],[240,0,"telnet",5,0,44,1,0,0.63],[241,0,"http",0,54540,8314,1,0,0.86],[242,0,"imap4",3,0,0,2,2,0.53],[243,0,"pop_3",0,31,93,3,0,0.77],[244,0,"smtp",0,2686,329,0,0,1],[245,0,"private",3,0,0,1,1,1],[246,0,"http",0,194,2996,0,0,1],[247,0,"http",0,246,4916,0,0,1],[248,2,"private",0,28,0,0,1,0.93],[249,0,"http",0,189,7770,0,0,1],[250,0,"http",0,237,336,0,0,1],[251,0,"pop_3",0,31,93,3,0,0.93],[252,0,"csnet_ns",3,0,0,1,1,1],[253,0,"private",3,0,0,1,1,1],[254,0,"http",0,192,10121,0,0,1],[255,2,"domain_u",0,44,73,0,0,1],[256,0,"http",1,47744,0,1,1,0.64],[257,0,"ftp_data",0,12,0,3,0,0.51],[258,0,"smtp",0,667,333,0,0,1],[259,0,"private",1,0,0,2,2,1],[260,1,"ecr_i",0,1008,0,1,1,1],[261,0,"imap4",4,0,0,2,1,0.91],[262,0,"http",0,164,1824,0,0,1],[263,2,"domain_u",0,36,0,0,0,1],[264,0,"private",3,0,0,2,2,1],[265,0,"private",3,0,0,1,1,1],[266,0,"other",3,0,0,2,2,1],[267,0,"http",0,334,4996,0,0,1],[268,0,"private",1,0,0,2,2,0.93],[269,0,"other",4,0,0,2,2,1],[270,2,"other",0,1,1,2,2,0.48],[271,0,"ftp",0,164,601,3,0,0.66],[272,0,"telnet",2,0,0,1,1,1],[273,0,"imap4",2,0,44,2,2,0.5],[274,2,"private",0,54,51,0,0,0.44],[275,0,"smtp",0,2599,293,1,0,0.96],[276,0,"private",3,0,0,1,1,1],[277,0,"imap4",4,0,0,2,1,0.832],[278,0,"other",4,0,0,2,2,1],[279,2,"private",0,1,0,0,2,0.96],[280,0,"ldap",3,0,0,1,1,1],[281,0,"http",0,207,3731,0,0,0.96],[282,0,"private",3,0,0,1,1,1],[283,0,"ftp_data",0,4539,0,0,0,1],[284,0,"http",0,300,2507,0,0,1],[285,0,"telnet",0,2615,4233,4,0,0.84],[286,0,"http",0,294,10772,0,0,1],[287,0,"http",0,208,1546,0,0,1],[288,0,"http",0,267,635,0,0,1],[289,0,"sunrpc",3,0,0,2,2,0.43],[290,0,"telnet",0,123,174,3,0,0.69],[291,0,"http",0,238,2936,0,0,1],[292,0,"ftp_data",0,12,0,3,3,0.66],[293,0,"pop_3",4,0,0,2,1,0.844],[294,0,"http",0,282,316,0,0,1],[295,0,"private",3,0,0,1,1,1],[296,0,"time",4,0,0,1,1,1],[297,0,"private",4,0,0,1,1,1],[298,1,"ecr_i",0,1008,0,1,1,1],[299,0,"http",0,275,785,0,0,1],[300,0,"ftp",0,95,332,4,0,0.53],[301,0,"private",4,0,0,1,1,1],[302,1,"ecr_i",0,520,0,1,1,0.93],[303,0,"telnet",0,24,715,2,2,0.49],[304,0,"telnet",4,0,0,2,1,0.817],[305,2,"private",0,44,44,3,0,1],[306,0,"smtp",0,969,329,0,0,0.95],[307,0,"http",0,294,1785,0,0,1],[308,0,"ftp",0,164,599,3,3,0.59],[309,0,"http",4,0,0,1,1,0.52],[310,0,"telnet",0,0,44,1,0,0.67],[311,2,"private",0,52,54,0,0,0.4],[312,0,"smtp",0,2599,293,1,0,0.86],[313,0,"http",0,302,4841,0,0,1],[314,0,"telnet",0,24,109,2,0,0.51],[315,0,"http",0,244,1452,0,0,1],[316,0,"telnet",0,0,44,1,0,0.71],[317,0,"http",0,193,10553,0,0,1],[318,0,"telnet",0,121,174,3,4,0.496],[319,0,"daytime",4,0,0,1,1,1],[320,0,"finger",4,0,0,1,1,1],[321,2,"private",0,45,42,0,0,0.44],[322,0,"private",3,0,0,2,2,1]];
+const D={"dataset":{"train_rows":125964,"test_rows":22541,"features_raw":41,"features_encoded":122,"features_pca":28},"classes":["DoS","Normal","Probe","R2L","U2R"],"train_before":{"Normal":67343,"DoS":45927,"Probe":11647,"R2L":995,"U2R":52},"train_after":{"Normal":67343,"DoS":45927,"Probe":11647,"R2L":5000,"U2R":5000},"test_dist":{"Normal":9711,"DoS":7460,"R2L":2885,"Probe":2418,"U2R":67},"metrics":{"Model":"Random Forest","Accuracy":0.7699,"Precision":0.8257,"Recall":0.7699,"F-measure":0.7385,"FAR":0.0254,"Detection Rate":0.6348,"Training time (s)":40.2},"per_class":{"DoS":{"precision":0.965,"recall":0.801,"f1":0.875,"support":7460},"Normal":{"precision":0.669,"recall":0.975,"f1":0.793,"support":9711},"Probe":{"precision":0.868,"recall":0.648,"f1":0.742,"support":2418},"R2L":{"precision":0.971,"recall":0.118,"f1":0.21,"support":2885},"U2R":{"precision":0.261,"recall":0.179,"f1":0.212,"support":67}},"cm":[[5972,1453,35,0,0],[56,9464,180,6,5],[162,689,1567,0,0],[0,2493,23,340,29],[0,51,0,4,12]],"attack_by_proto":{"tcp":11035,"icmp":950,"udp":845},"attack_top_services":{"private":3922,"telnet":1582,"http":1180,"pop_3":1011,"other":770,"ecr_i":704}};
+/* Decode compact stream into full objects */
+D.stream=_R.map(function(r){return{id:r[0],proto:_P[r[1]],service:r[2],flag:_F[r[3]],src:r[4],dst:r[5],actual:ORDER[r[6]],pred:ORDER[r[7]],conf:r[8]}});
+
+const SEV={Normal:'NONE',DoS:'HIGH',Probe:'MEDIUM',R2L:'HIGH',U2R:'CRITICAL'};
+const DESC={
+  DoS:'Denial of Service. Floods a host or service so legitimate users cannot reach it. Example: neptune SYN flood, smurf.',
+  Probe:'Reconnaissance. Scans hosts, ports and services to map the network before an attack. Example: portsweep, nmap.',
+  R2L:'Remote to Local. A remote attacker with no account tries to gain local access. Example: guess_passwd, ftp_write.',
+  U2R:'User to Root. A normal user escalates to administrator privileges. Example: buffer_overflow, rootkit.'};
+const $=id=>document.getElementById(id);
+const fmt=n=>n.toLocaleString('en-US');
+const pct=(x,d=1)=>(x*100).toFixed(d)+'%';
+
+/* ===== Tabs (roving tabindex + arrow/home/end) ===== */
+const TABS=['monitor','performance','pipeline'];
+const tabButtons=TABS.map(t=>$('tab-'+t));
+let activeTabIdx=0;
+/* Lazy-init flags for performance and pipeline tabs */
+let perfBuilt=false, pipeBuilt=false;
+
+function showTab(name){
+  if(!TABS.includes(name)) name='monitor';
+  const idx=TABS.indexOf(name);
+  activeTabIdx=idx;
+  TABS.forEach((t,i)=>{
+    const btn=tabButtons[i], sec=$(t);
+    const active=i===idx;
+    sec.hidden=!active;
+    btn.setAttribute('aria-selected',active?'true':'false');
+    btn.tabIndex=active?0:-1;
+  });
+  /* Lazy-render tabs on first open */
+  if(name==='performance'&&!perfBuilt){ buildPerformance(); perfBuilt=true; }
+  if(name==='pipeline'&&!pipeBuilt){ buildPipeline(); pipeBuilt=true; }
+  /* Pause monitor when not visible, resume if was playing */
+  if(name==='monitor'){ if(state==='playing') startTimer(); }
+  else { stopTimer(); }
+}
+tabButtons.forEach((btn,i)=>{
+  btn.addEventListener('click',()=>{ location.hash=TABS[i]; showTab(TABS[i]); btn.focus(); });
+  btn.addEventListener('keydown',e=>{
+    let next=-1;
+    if(e.key==='ArrowRight'||e.key==='ArrowDown') next=(i+1)%TABS.length;
+    else if(e.key==='ArrowLeft'||e.key==='ArrowUp') next=(i+TABS.length-1)%TABS.length;
+    else if(e.key==='Home') next=0;
+    else if(e.key==='End') next=TABS.length-1;
+    if(next>=0){ e.preventDefault(); tabButtons[next].click(); }
+  });
+});
+window.addEventListener('hashchange',()=>{
+  const h=location.hash.slice(1);
+  if(TABS.includes(h)) showTab(h);
+  else{ history.replaceState(null,'','#monitor'); showTab('monitor'); }
+});
+
+/* ===== Build the replay sequence (deterministic) ===== */
+let seed=7; const rnd=()=>(seed=(seed*1664525+1013904223)%4294967296)/4294967296;
+const shuffle=a=>{for(let i=a.length-1;i>0;i--){const j=Math.floor(rnd()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;};
+const pool={}; ORDER.forEach(c=>pool[c]=D.stream.filter(e=>e.actual===c));
+const take=(c,n)=>pool[c].splice(0,n);
+const SEQ=[].concat(
+  take('Normal',30),
+  shuffle([].concat(take('DoS',90),take('Normal',15))),
+  take('Normal',25),
+  shuffle([].concat(take('Probe',50),take('Normal',15))),
+  take('Normal',20),
+  shuffle([].concat(take('R2L',30),take('U2R',12),take('Normal',20))),
+  pool.Normal.splice(0)
+);
+const TOTAL=SEQ.length;
+
+/* ===== Monitor state machine ===== */
+/* States: 'playing' | 'paused' | 'ended' */
+let state='paused', pos=0, timer=null, st;
+let elapsedMs=0, lastTickTime=0;
+/* Screen-reader throttle: limit aria-live updates at high speed */
+let lastFeedAnnounce=0;
+const FEED_ANNOUNCE_MIN_MS=800;
+
+function reset(){
+  st={n:0,alerts:0,confirmed:0,missed:0,counts:{Normal:0,DoS:0,Probe:0,R2L:0,U2R:0},
+      recent:[],last20preds:[],series:[],feed:[]};
+  pos=0; elapsedMs=0;
+}
+reset();
+
+function step(){
+  if(pos>=TOTAL) return false;
+  const e=SEQ[pos++]; st.n++; st.counts[e.pred]++;
+  const isAtk=e.pred!=='Normal';
+  if(isAtk){ st.alerts++; if(e.pred===e.actual) st.confirmed++; st.feed.unshift(e); if(st.feed.length>9) st.feed.pop(); }
+  else if(e.actual!=='Normal') st.missed++;
+  st.recent.push(isAtk?1:0); if(st.recent.length>20) st.recent.shift();
+  st.last20preds.push(e.pred); if(st.last20preds.length>20) st.last20preds.shift();
+  const ratio=st.recent.length?st.recent.reduce((a,b)=>a+b,0)/st.recent.length:0;
+  st.series.push(ratio);
+  return true;
+}
+
+/* Compute threat level from cached rolling state */
+function level(){
+  const r=st.recent.length?st.recent.reduce((a,b)=>a+b,0)/st.recent.length:0;
+  /* Find dominant attack type in last 20 */
+  const cnt={};
+  st.last20preds.forEach(p=>{if(p!=='Normal') cnt[p]=(cnt[p]||0)+1;});
+  const top=Object.keys(cnt).sort((a,b)=>cnt[b]-cnt[a])[0];
+  if(r<0.15) return ['LOW','var(--good)','no active threat'];
+  if(r<0.4)  return ['ELEVATED','var(--warn)','mostly '+top+' activity'];
+  if(r<0.7)  return ['HIGH','var(--bad)','active '+top+' attack'];
+  return ['SEVERE','var(--bad)','sustained '+top+' attack'];
+}
+
+/* ===== Incremental DOM: one-time setup ===== */
+
+/* --- Feed: fixed pool of 9 slots, only new alert animates --- */
+const feedEl=$('feed');
+const emptyEl=document.createElement('div');
+emptyEl.className='empty';
+emptyEl.textContent='Watching traffic. No alerts yet.';
+let feedNodes=[]; /* current DOM alert nodes in feed */
+let feedDataLen=0; /* length of st.feed last time we rendered */
+
+function makeAlertNode(e){
+  const ok=e.pred===e.actual;
+  const div=document.createElement('div');
+  div.className='alert c-'+e.pred+' anim-in';
+  div.setAttribute('role','listitem');
+  div.innerHTML=
+    '<span class="pill">'+SEV[e.pred]+'</span>'+
+    '<span class="t">'+e.pred+' attack detected</span>'+
+    '<span class="r"><span>'+pct(e.conf,0)+' confidence</span><span class="'+(ok?'ok':'fa')+'">'+(ok?'✓ confirmed':'actual: '+e.actual)+'</span></span>'+
+    '<span class="d">#'+String(e.id).padStart(3,'0')+' · '+e.proto+'/'+e.service+' · flag '+e.flag+' · '+fmt(e.src)+' B out</span>';
+  /* Remove animation class after it plays so it doesn't re-trigger */
+  div.addEventListener('animationend',function(){div.classList.remove('anim-in');},{once:true});
+  return div;
+}
+
+function renderFeed(){
+  if(st.feed.length===0){
+    if(feedEl.firstChild!==emptyEl){
+      feedEl.textContent='';
+      feedEl.appendChild(emptyEl);
+      feedNodes=[];
+    }
+    return;
+  }
+  /* Only update if new alerts were added */
+  const newCount=st.feed.length-feedDataLen;
+  if(newCount<=0){ feedDataLen=st.feed.length; return; }
+  /* Remove empty placeholder if present */
+  if(feedEl.contains(emptyEl)) feedEl.removeChild(emptyEl);
+  /* Prepend new alert nodes */
+  for(let i=newCount-1;i>=0;i--){
+    const node=makeAlertNode(st.feed[i]);
+    feedEl.insertBefore(node,feedEl.firstChild);
+    feedNodes.unshift(node);
+  }
+  /* Remove excess nodes from end */
+  while(feedNodes.length>9){
+    const old=feedNodes.pop();
+    feedEl.removeChild(old);
+  }
+  /* Throttle aria-live: temporarily remove for high-speed so SR isn't flooded */
+  const now=performance.now();
+  if(now-lastFeedAnnounce<FEED_ANNOUNCE_MIN_MS){
+    feedEl.setAttribute('aria-live','off');
+  } else {
+    feedEl.setAttribute('aria-live','polite');
+    lastFeedAnnounce=now;
+  }
+  feedDataLen=st.feed.length;
+}
+
+/* --- Bars: create 5 rows once, update scaleX + text --- */
+const barsEl=$('bars');
+const barRows={};
+ORDER.forEach(c=>{
+  const row=document.createElement('div');
+  row.className='bar c-'+c;
+  row.setAttribute('role','listitem');
+  row.innerHTML='<span>'+c+'<br><span class="sev">'+SEV[c]+'</span></span><div class="tr"><i></i></div><span class="n">0</span>';
+  barsEl.appendChild(row);
+  barRows[c]={el:row,fill:row.querySelector('i'),num:row.querySelector('.n'),lastVal:-1};
+});
+
+function renderBars(){
+  const mx=Math.max(1,...ORDER.map(c=>st.counts[c]));
+  ORDER.forEach(c=>{
+    const b=barRows[c], v=st.counts[c];
+    if(v!==b.lastVal){
+      b.fill.style.transform='scaleX('+(v/mx)+')';
+      b.num.textContent=fmt(v);
+      b.num.setAttribute('aria-label',c+': '+fmt(v));
+      b.lastVal=v;
+    }
+  });
+}
+
+/* --- SVG chart: create static parts once, update data path --- */
+const tlSvg=$('tl');
+const W=400,H=130,L=30,R_=8,T_=8,B_=20;
+const X=i=>L+(TOTAL>1?i/(TOTAL-1):0)*(W-L-R_);
+const Y=v=>T_+(1-v)*(H-T_-B_);
+/* Build static gridlines and labels */
+(function(){
+  const ns='http://www.w3.org/2000/svg';
+  [0,.5,1].forEach(v=>{
+    const line=document.createElementNS(ns,'line');
+    line.setAttribute('x1',L); line.setAttribute('x2',W-R_);
+    line.setAttribute('y1',Y(v)); line.setAttribute('y2',Y(v));
+    line.setAttribute('stroke','var(--line)'); line.setAttribute('stroke-width','1');
+    tlSvg.appendChild(line);
+    const txt=document.createElementNS(ns,'text');
+    txt.setAttribute('x',L-6); txt.setAttribute('y',Y(v)+4);
+    txt.setAttribute('text-anchor','end'); txt.textContent=v*100+'%';
+    tlSvg.appendChild(txt);
+  });
+  const t1=document.createElementNS(ns,'text');
+  t1.setAttribute('x',L); t1.setAttribute('y',H-4); t1.textContent='start';
+  tlSvg.appendChild(t1);
+  const t2=document.createElementNS(ns,'text');
+  t2.setAttribute('x',W-R_); t2.setAttribute('y',H-4);
+  t2.setAttribute('text-anchor','end'); t2.textContent=TOTAL+' connections';
+  tlSvg.appendChild(t2);
+})();
+/* Dynamic elements */
+const ns='http://www.w3.org/2000/svg';
+const tlPoly=document.createElementNS(ns,'polygon');
+tlPoly.setAttribute('fill','var(--accent)'); tlPoly.setAttribute('opacity','.16');
+tlSvg.appendChild(tlPoly);
+const tlLine=document.createElementNS(ns,'polyline');
+tlLine.setAttribute('fill','none'); tlLine.setAttribute('stroke','var(--accent)');
+tlLine.setAttribute('stroke-width','2'); tlLine.setAttribute('stroke-linejoin','round');
+tlSvg.appendChild(tlLine);
+const tlDot=document.createElementNS(ns,'circle');
+tlDot.setAttribute('r','4'); tlDot.setAttribute('fill','var(--accent)');
+tlSvg.appendChild(tlDot);
+/* Initially hidden until we have data */
+tlPoly.setAttribute('points',''); tlLine.setAttribute('points','');
+tlDot.setAttribute('cx','-10'); tlDot.setAttribute('cy','-10');
+
+function drawTL(){
+  const n=st.series.length;
+  if(n<2) return;
+  const pts=st.series.map((v,i)=>X(i)+','+Y(v)).join(' ');
+  tlLine.setAttribute('points',pts);
+  tlPoly.setAttribute('points',X(0)+','+Y(0)+' '+pts+' '+X(n-1)+','+Y(0));
+  tlDot.setAttribute('cx',X(n-1));
+  tlDot.setAttribute('cy',Y(st.series[n-1]));
+}
+
+/* ===== KPI cache — skip DOM writes when value unchanged ===== */
+const kpiCache={};
+function setKPI(id,text){
+  if(kpiCache[id]!==text){ $(id).textContent=text; kpiCache[id]=text; }
+}
+
+function render(){
+  setKPI('k-n',fmt(st.n));
+  setKPI('k-n-s','of '+fmt(TOTAL)+' in replay');
+  setKPI('k-a',fmt(st.alerts));
+  setKPI('k-a-s',(st.n?pct(st.alerts/st.n,0):'0%')+' of traffic');
+  setKPI('k-c',fmt(st.confirmed));
+  setKPI('k-c-s',(st.alerts?pct(st.confirmed/st.alerts,0):'0%')+' match ground truth');
+  setKPI('k-m',fmt(st.missed));
+  const [lv,col,txt]=level();
+  setKPI('lvl',lv); setKPI('lvl-s',txt);
+  $('lvl-dot').style.background=col; $('lvl').style.color=col;
+  $('progbar').style.width=(pos/TOTAL*100)+'%';
+  /* Clock: show elapsed wall-clock time (accounts for speed naturally) */
+  const totalSec=Math.floor(elapsedMs/1000);
+  setKPI('clock','T+'+String(Math.floor(totalSec/60)).padStart(2,'0')+':'+String(totalSec%60).padStart(2,'0'));
+  renderFeed();
+  renderBars();
+  drawTL();
+}
+
+/* ===== Timer: setTimeout loop with drift correction + Page Visibility ===== */
+const INTERVAL=400; /* ms per tick */
+
+function tick(){
+  const now=performance.now();
+  elapsedMs+=now-lastTickTime;
+  lastTickTime=now;
+  const k=parseInt($('speed').value);
+  let ended=false;
+  for(let i=0;i<k;i++){ if(!step()){ ended=true; break; } }
+  render();
+  if(ended){ transitionTo('ended'); return; }
+  /* Schedule next tick with drift correction */
+  const elapsed=performance.now()-now;
+  const delay=Math.max(0,INTERVAL-elapsed);
+  timer=setTimeout(tick,delay);
+}
+
+function startTimer(){
+  stopTimer();
+  lastTickTime=performance.now();
+  timer=setTimeout(tick,0);
+}
+function stopTimer(){
+  if(timer!==null){ clearTimeout(timer); timer=null; }
+}
+
+/* State machine transitions */
+function transitionTo(newState){
+  stopTimer();
+  state=newState;
+  switch(newState){
+    case 'playing':
+      $('play').textContent='Pause';
+      startTimer();
+      break;
+    case 'paused':
+      $('play').textContent='Play';
+      break;
+    case 'ended':
+      $('play').textContent='Replay';
+      break;
+  }
+}
+
+$('play').addEventListener('click',()=>{
+  switch(state){
+    case 'playing': transitionTo('paused'); break;
+    case 'paused': transitionTo('playing'); break;
+    case 'ended':
+      reset(); feedNodes=[]; feedDataLen=0;
+      feedEl.textContent=''; feedEl.appendChild(emptyEl);
+      /* Reset bar values */
+      ORDER.forEach(c=>{barRows[c].lastVal=-1;});
+      /* Reset SVG */
+      tlLine.setAttribute('points','');
+      tlPoly.setAttribute('points','');
+      tlDot.setAttribute('cx','-10'); tlDot.setAttribute('cy','-10');
+      /* Clear KPI cache */
+      Object.keys(kpiCache).forEach(k=>delete kpiCache[k]);
+      render();
+      transitionTo('playing');
+      break;
+  }
+});
+$('restart').addEventListener('click',()=>{
+  reset(); feedNodes=[]; feedDataLen=0;
+  feedEl.textContent=''; feedEl.appendChild(emptyEl);
+  ORDER.forEach(c=>{barRows[c].lastVal=-1;});
+  tlLine.setAttribute('points','');
+  tlPoly.setAttribute('points','');
+  tlDot.setAttribute('cx','-10'); tlDot.setAttribute('cy','-10');
+  Object.keys(kpiCache).forEach(k=>delete kpiCache[k]);
+  render();
+  transitionTo('playing');
+});
+$('speed').addEventListener('change',()=>{
+  if(state==='playing'){ stopTimer(); startTimer(); }
+});
+
+/* Page Visibility: pause timer when tab hidden, resume when visible */
+document.addEventListener('visibilitychange',()=>{
+  if(document.hidden){
+    if(state==='playing') stopTimer();
+  } else {
+    if(state==='playing') startTimer();
+  }
+});
+
+/* Clean up on pagehide */
+window.addEventListener('pagehide',()=>{ stopTimer(); });
+
+/* ===== Initial population: first 40 connections ===== */
+for(let i=0;i<40;i++) step();
+render();
+
+/* Start playing (or not, if reduced motion) */
+if(window.matchMedia('(prefers-reduced-motion: reduce)').matches){
+  transitionTo('paused');
+} else {
+  /* Set initial active tab from hash */
+  const initHash=location.hash.slice(1);
+  if(TABS.includes(initHash)){
+    showTab(initHash);
+    if(initHash==='monitor') transitionTo('playing');
+    else transitionTo('paused'); /* will auto-resume when switching to monitor */
+  } else {
+    showTab('monitor');
+    transitionTo('playing');
+  }
+}
+
+/* ===== Performance tab (lazy) ===== */
+function buildPerformance(){
+  const m=D.metrics;
+  const tiles=[['Accuracy',m.Accuracy,'all 5 classes'],['Precision',m.Precision,'weighted'],['Recall',m.Recall,'weighted'],['F-measure',m['F-measure'],'weighted'],
+    ['Detection rate',m['Detection Rate'],'attack vs normal'],['False alarm rate',m.FAR,'normal flagged as attack']];
+  const frag=document.createDocumentFragment();
+  tiles.forEach(t=>{
+    const div=document.createElement('div'); div.className='kpi';
+    div.innerHTML='<div class="l">'+t[0]+'</div><div class="v">'+(t[1]*100).toFixed(1)+'%</div><div class="s">'+t[2]+'</div>';
+    frag.appendChild(div);
+  });
+  $('metrics').appendChild(frag);
+
+  const pcFrag=document.createDocumentFragment();
+  ORDER.forEach(c=>{
+    const p=D.per_class[c];
+    const row=(l,v)=>'<div class="m"><span>'+l+'</span><div class="bg"><i style="width:'+v*100+'%"></i></div><b>'+(v*100).toFixed(0)+'%</b></div>';
+    const label=document.createElement('div'); label.className='c-'+c; label.style.fontWeight='600';
+    label.innerHTML=c+'<div class="sev">n='+fmt(p.support)+'</div>';
+    pcFrag.appendChild(label);
+    const trio=document.createElement('div'); trio.className='trio c-'+c;
+    trio.innerHTML=row('P',p.precision)+row('R',p.recall)+row('F1',p.f1);
+    pcFrag.appendChild(trio);
+  });
+  $('pc').appendChild(pcFrag);
+
+  const idx=ORDER.map(c=>D.classes.indexOf(c));
+  let h='<table class="cm" role="table" aria-label="Confusion matrix"><tr><th></th>'+ORDER.map(c=>'<th>'+c+'</th>').join('')+'</tr>';
+  idx.forEach((ri,a)=>{const tot=D.cm[ri].reduce((x,y)=>x+y,0)||1;
+    h+='<tr><th>'+ORDER[a]+'</th>'+idx.map((ci,b)=>{const v=D.cm[ri][ci], f=v/tot; const good=a===b;
+      return '<td style="background:color-mix(in srgb, var('+(good?'--good':'--bad')+') '+Math.round(f*85)+'%, var(--panel2))" title="'+ORDER[a]+' predicted as '+ORDER[b]+': '+fmt(v)+' ('+pct(f)+')">'+fmt(v)+'</td>';}).join('')+'</tr>';});
+  $('cm').innerHTML=h+'</table>';
+
+  const r2l=D.per_class.R2L, u2r=D.per_class.U2R, dos=D.per_class.DoS;
+  $('callout').innerHTML='<b>Reading these results.</b> DoS is caught reliably ('+pct(dos.precision,0)+' precision, '+pct(dos.recall,0)+' recall) and only '+pct(m.FAR)+' of normal traffic raises a false alarm. R2L and U2R are the weak spots: recall is '+pct(r2l.recall,0)+' for R2L and '+pct(u2r.recall,0)+' for U2R. These attacks are very rare in the training data (52 U2R examples), and KDDTest+ contains attack variants that never appear in training. This matches the limitation on minority classes and zero-day attacks discussed in the report.';
+}
+
+/* ===== Pipeline tab (lazy) ===== */
+function buildPipeline(){
+  const d=D.dataset;
+  const steps=[
+    ['Data','NSL-KDD',fmt(d.train_rows)+' train rows, '+fmt(d.test_rows)+' test rows, '+d.features_raw+' features','41'],
+    ['Pre-process','Encode and scale','One-hot for protocol, service, flag. Min-max scaling for numbers.',d.features_encoded],
+    ['Balance','SMOTE','Synthetic samples lift R2L and U2R to 5,000 training rows each.','5,000'],
+    ['Reduce','PCA, 95% variance','Keeps the directions that carry 95% of the information.',d.features_pca],
+    ['Classify','Random Forest','100 trees vote on Normal, DoS, Probe, R2L or U2R.',pct(D.metrics.Accuracy,1)],
+    ['Alert','Severity + report','Each attack gets a severity and is written to the alert log.','4 types']];
+  const cap=['features','features','per rare class','features','test accuracy','attack classes'];
+
+  const flowFrag=document.createDocumentFragment();
+  steps.forEach((s,i)=>{
+    const div=document.createElement('div'); div.className='step';
+    div.innerHTML='<div class="k">Step '+(i+1)+' · '+s[0]+'</div><div class="h">'+s[1]+'</div><div class="p">'+s[2]+'</div><div class="big">'+s[3]+' <span class="note" style="font:12px var(--f-body)">'+cap[i]+'</span></div>';
+    flowFrag.appendChild(div);
+  });
+  $('flow').appendChild(flowFrag);
+
+  const mx=Math.max(...ORDER.map(c=>D.train_after[c]));
+  const smoteFrag=document.createDocumentFragment();
+  ORDER.forEach(c=>{
+    const div=document.createElement('div'); div.className='bar c-'+c;
+    div.innerHTML='<span>'+c+'</span><div class="tr" style="position:relative"><i style="width:'+D.train_after[c]/mx*100+'%;opacity:.35;position:absolute;inset:0 auto 0 0;transform:none"></i><i style="width:'+D.train_before[c]/mx*100+'%;position:absolute;inset:0 auto 0 0;transform:none"></i></div><span class="n">'+fmt(D.train_before[c])+'→'+fmt(D.train_after[c])+'</span>';
+    smoteFrag.appendChild(div);
+  });
+  $('smote').appendChild(smoteFrag);
+  const noteDiv=document.createElement('div'); noteDiv.className='note';
+  noteDiv.textContent='Solid bar: before. Faint bar: after SMOTE.';
+  $('smote').appendChild(noteDiv);
+
+  const mkBars=(obj,elId)=>{
+    const ks=Object.keys(obj), m2=Math.max(...ks.map(k=>obj[k]));
+    const frag=document.createDocumentFragment();
+    ks.forEach(k=>{
+      const div=document.createElement('div'); div.className='bar'; div.style.setProperty('--c','var(--accent)');
+      div.innerHTML='<span>'+k+'</span><div class="tr"><i style="transform:scaleX('+(obj[k]/m2)+')"></i></div><span class="n">'+fmt(obj[k])+'</span>';
+      frag.appendChild(div);
+    });
+    $(elId).appendChild(frag);
+  };
+  mkBars(D.attack_by_proto,'proto');
+  mkBars(D.attack_top_services,'svc');
+
+  const atkFrag=document.createDocumentFragment();
+  ['DoS','Probe','R2L','U2R'].forEach(c=>{
+    const div=document.createElement('div');
+    div.className='alert c-'+c;
+    div.style.gridTemplateColumns='auto 1fr';
+    div.innerHTML='<span class="pill">'+SEV[c]+'</span><span class="t">'+c+'</span><span class="d" style="font:13px var(--f-body)">'+DESC[c]+'</span>';
+    atkFrag.appendChild(div);
+  });
+  $('atkdesc').appendChild(atkFrag);
+}
+
+/* ===== Handle initial hash on load ===== */
+(function(){
+  const h=location.hash.slice(1);
+  if(!TABS.includes(h)&&h){
+    history.replaceState(null,'','#monitor');
+  }
+  /* showTab was already called above; ensure correct initial state */
+  if(!h||!TABS.includes(h)){
+    showTab('monitor');
+  } else if(h!=='monitor'){
+    showTab(h);
+  }
+})();
+</script>
+</body>
+</html>
