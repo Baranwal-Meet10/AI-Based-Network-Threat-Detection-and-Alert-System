@@ -36,25 +36,6 @@ Traditional network security appliances (legacy stateless firewalls and signatur
 4. **Benchmarks Multi-Class Classifiers:** Compares an ensemble **Random Forest (100 estimators)** against a **Deep Neural Network (MLP with Dropout regularization)**.
 5. **Automates Incident Triaging:** Generates actionable, severity-rated security alerts (`CRITICAL`, `HIGH`, `MEDIUM`, `NONE`) and exports incident audit logs.
 6. **Delivers Real-Time Visualization:** Features a standalone, performant web SOC console that replays connection streams with rolling threat share analytics and confusion matrix inspection.
-
----
-
-## System Architecture & Pipeline Workflow
-
-```mermaid
-flowchart TD
-    A[Raw NSL-KDD Traffic Data\nKDDTrain+ & KDDTest+] --> B[Pre-processing & Cleaning\n- Deduplication\n- One-Hot Encoding for proto, service, flag\n- Min-Max Scaling for numeric features]
-    B --> C[Feature Space: 122 Features]
-    C --> D[Class Imbalance Mitigation\nSMOTE on Training Split Only\nOversamples R2L & U2R to 5,000 samples]
-    D --> E[Dimensionality Reduction: PCA\nReduces 122 dims to 28 PCs\nRetains 95% Cumulative Variance]
-    E --> F1[Model A: Random Forest\n100 Estimators, Multi-Core]
-    E --> F2[Model B: Deep Neural Network\nDense 128 -> Dropout 0.3 -> Dense 64\nDropout 0.3 -> Dense 32 -> Softmax 5]
-    F1 & F2 --> G[Evaluation & Model Selection\nAccuracy, Precision, Recall, F1, FAR, DR]
-    G --> H[Inference Engine & Alert Generator\nThreshold & Severity Classification]
-    H --> I[Threat Alerts Log\nCSV Export: detection_results.csv]
-    H --> J[Interactive SOC Dashboard\nSingle-file HTML5/ES6 Monitor]
-```
-
 ---
 
 ## Attack Taxonomy & Threat Severity Matrix
@@ -191,9 +172,6 @@ Simply double-click [`dashboard/index.html`](dashboard/index.html) to open it in
 ## References
 
 1. Z. Ahmad, A. S. Khan, C. W. Shiang, J. Abdullah, and F. Ahmad, *"Network intrusion detection system: A systematic study of machine learning and deep learning approaches,"* Transactions on Emerging Telecommunications Technologies, vol. 32, no. 1, p. e4150, 2020. [DOI: 10.1002/ett.4150](https://doi.org/10.1002/ett.4150).
-2. M. Tavallaee, E. Bagheri, W. Lu, and A. A. Ghorbani, *"A detailed analysis of the KDD CUP 99 data set,"* 2009 IEEE Symposium on Computational Intelligence for Security and Defense Applications (CISDA), Ottawa, ON, Canada, 2009, pp. 53–58. [DOI: 10.1109/CISDA.2009.5356528](https://doi.org/10.1109/CISDA.2009.5356528).
-3. N. V. Chawla, K. W. Bowyer, L. O. Hall, and W. P. Kegelmeyer, *"SMOTE: Synthetic Minority Over-sampling Technique,"* Journal of Artificial Intelligence Research, vol. 16, pp. 321–357, 2002.
-
 ---
 
 ## License
