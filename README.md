@@ -14,7 +14,7 @@
 ## Academic Context & Team
 
 **Course:** Computer Networks (B.Tech Computer Science & Engineering)  
-**Institution:** Unitedworld Institute of Technology / Karnavati University  
+**Institution:** Unitedworld Institute of Technology (UIT) / Karnavati University  
 **Academic Period:** July – November 2026  
 **Faculty Mentor:** Ms. Pragya Vats  
 
